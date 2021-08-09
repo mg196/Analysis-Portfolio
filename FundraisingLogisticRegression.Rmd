@@ -1,0 +1,175 @@
+---
+title: "Fundraising Logistic Regression"
+author: "Miguel Gonzales"
+date: "8/3/2021"
+output:
+  html_document: default
+---
+
+### Disclaimer
+
+##### **The dataset used in this analysis was created by Miguel Gonzales. It contains no confidential information whatsoever. This dataset can be viewed at** https://github.com/mg196/Analysis-Portfolio/blob/main/CreatedDonorData.xlsx?raw=true
+
+### Load libraries
+```{r}
+library(tidyverse)
+library(caret)
+library(ggplot2)
+library(lattice)
+```
+### Load, clean and prepare data
+```{r}
+
+# Run reusable confusion matrix function 
+
+my_confusion_matrix <- function(cf_table) {
+  true_positive <- cf_table[4]
+  true_negative <- cf_table[1]
+  false_positive <- cf_table[2]
+  false_negative <- cf_table[3]
+  accuracy <- (true_positive + true_negative) / (true_positive + true_negative + false_positive + false_negative)
+  sensitivity_recall <- true_positive / (true_positive + false_negative) 
+  specificity_selectivity <- true_negative / (true_negative + false_positive)
+  precision <- true_positive / (true_positive + false_positive) 
+  neg_pred_value <- true_negative/(true_negative + false_negative)
+  print(cf_table)
+  my_list <- list(sprintf("%1.0f = True Positive (TP), Hit", true_positive),
+          sprintf("%1.0f = True Negative (TN), Rejection", true_negative),
+          sprintf("%1.0f = False Positive (FP), Type 1 Error", false_positive),
+          sprintf("%1.0f = False Negative (FN), Type 2 Error", false_negative),
+          sprintf("%1.4f = Accuracy (TP+TN/(TP+TN+FP+FN))", accuracy), 
+          sprintf("%1.4f = Sensitivity, Recall, Hit Rate, True Positive Rate (How many positives did the model get right? TP/(TP+FN))", sensitivity_recall),
+          sprintf("%1.4f = Specificity, Selectivity, True Negative Rate (How many negatives did the model get right? TN/(TN+FP))", specificity_selectivity),
+          sprintf("%1.4f = Precision, Positive Predictive Value (How good are the model's positive predictions? TP/(TP+FP))", precision),
+          sprintf("%1.4f = Negative Predictive Value (How good are the model's negative predictions? TN/(TN+FN)", neg_pred_value)
+  )
+  return(my_list)
+}
+
+```
+
+
+```{r}
+
+# Read in data and create dataframe
+
+df <- read.csv("C:/Users/gonza/OneDrive/Desktop/MBA/BA_Machine Learning/Homework/DonorData.csv", stringsAsFactors = T)
+
+# Summarize data
+
+summary(df)
+
+str(df)
+
+```
+
+
+```{r}
+
+# Remove NAs
+
+df <- na.omit(df)
+
+sum(is.na(df))
+
+# Remove Age variable to make interpretation of model more straightforward (age ranges are still included)
+
+df <- df %>% select(-Age)
+
+```
+
+```{r}
+
+# Check that "positive" is last for the `my_confusion_matrix` to work 
+
+contrasts(factor(df$Donor))
+
+```
+
+
+### Partition the data into testing and training datasets
+```{r}
+
+set.seed(77) 
+
+partition <- caret::createDataPartition(y=df$Donor, p=.75, list=FALSE)
+
+data_train <- df[partition, ]
+
+data_test <- df[-partition, ]
+
+```
+
+```{r}
+model_train <- glm(Donor ~ ., family=binomial, data=data_train)
+
+summary(model_train)
+```
+
+
+```{r}
+# Yields error that may be due to collinearity
+
+predict_test <- predict(model_train, newdata=data_test, type='response')
+
+# Remove possible offending variable Age_56_Plus
+
+# data_train <- data_train %>% select(-Age_56_Plus)
+# data_test <- data_test %>% select(-Age_56_Plus)
+ 
+```
+
+
+```{r}
+
+# Build parsimonious model by removing low/no-significance variables
+
+df1 <- df %>% ungroup() %>% select(Donor, Age18_25, Age26_35, Gender, Email_Open_High, Alum, Recv_Grt_Schol_High, AttendGames)
+
+set.seed(77) 
+
+partition1 <- caret::createDataPartition(y=df1$Donor, p=.75, list=FALSE)
+
+data_train1 <- df1[partition1, ]
+
+data_test1 <- df1[-partition1, ]
+```
+
+### Run model and interpret output, confusion matrix
+```{r}
+
+# Create new model and run it
+
+model_train1 <- glm(Donor ~ ., family=binomial, data=data_train1)
+
+summary(model_train1)
+
+```
+
+```{r}
+
+# Re-run prediction test, confirm no error message shown
+
+predict_test1 <- predict(model_train1, newdata=data_test1, type='response')
+
+```
+
+```{r}
+
+# Prediction on left and truth on top
+
+table1 <- table(predict_test >.5, data_test1$Donor) 
+
+my_confusion_matrix(table1)
+
+```
+### Summary Report
+
+This logistic regression model seeks to describe the factors that predict who is a donor to this college and who is not. The dependent variable in the model is the classification of Donor/Not Donor. Because the dependent variable is a binary classification, logistic regression is appropriate. 
+
+The explanatory variables include: age, race and ethnicity, gender, alumni status, whether the constituent received a grant or scholarship above the mean amount upon matriculating, and whether the constituent opens more than the average amount of the college's emails per year. The model is poor when it comes to predicting which constituents are donors; only about 31% of the classifications were correct. However, the model is much better at classifying non-donors. Approximately 90% of non-donors were classified correctly. The positive and negative predictive values of the model were 69% and 63%, respectively. Given the model's proficiency at predicting true negatives--that is, non-donors--it is potentially useful. With some fine-tuning, this model could help the college spend less resources attempting to secure donations from prospects who are unlikely to donate. 
+
+Some of the unremarkable findings of this analysis include that being between the ages of 18-35 is a negative predictor of being a donor and that being an alumnus is a positive predictor. Some of the notable findings include that constituents who opened more emails than average, and those who received scholarships/grants above the mean, were more likely to be donors. So, too, were those who had attended >1 college sporting event each year over the last 3 years. A high rate of opening emails had the strongest positive association with being a donor, while being female, surprisingly, had the largest negative association. (It is conventional wisdom among some advancement professionals that women tend to be more philanthropic.)
+
+Although I would not prescribe any changes in businesses practices based on this test alone, this model offers a good starting point from which a more useful one can be built. Additional explanatory variables should be identified and tested to improve the model. 
+
